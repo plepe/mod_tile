@@ -49,6 +49,18 @@ typedef struct {
 void statsRenderFinish(int z, long time);
 void request_exit(void);
 
+struct queue {
+    int queue_idx;
+    struct item *head;
+    int reqNum;
+    int currRender;
+    int maxRender;
+    int con_minz;
+    int con_maxz;
+    int con_dirty;
+};
+#define QUEUE_COUNT 4
+
 #ifdef __cplusplus
 }
 #endif

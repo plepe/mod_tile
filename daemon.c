@@ -40,6 +40,9 @@ static pthread_mutex_t qLock;
 static pthread_cond_t qCond;
 static int exit_pipe_fd;
 
+static struct queue queue_list[QUEUE_COUNT];
+int queue_count=0;
+
 static stats_struct stats;
 static pthread_t stats_thread;
 
@@ -857,6 +860,40 @@ void *slave_thread(void * arg) {
     return NULL;
 }
 
+/* maxRender: max count of concurrent items to render
+ * con_minz..con_maxz: what zoom levels do we feel responsible for
+ * con_dirty: 1 only accept requests for dirty tiles
+ *            0 only accept requests for non-existing tiles
+ *           -1 don't care about dirty-state
+ */
+void queue_init(int maxRender, int con_minz, int con_maxz, int con_dirty) {
+  int queue_idx;
+  // get pos of queue and increase queue count
+  queue_idx=queue_count++;
+
+  queue_list[queue_idx].queue_idx=queue_idx;
+  queue_list[queue_idx].head=(struct item *)malloc(sizeof(struct item));
+  queue_list[queue_idx].head->next=queue_list[queue_idx].head;
+  queue_list[queue_idx].head->prev=queue_list[queue_idx].head;
+  queue_list[queue_idx].reqNum=0;
+  queue_list[queue_idx].currRender=0;
+  queue_list[queue_idx].maxRender=maxRender;
+  queue_list[queue_idx].con_minz=con_minz;
+  queue_list[queue_idx].con_maxz=con_maxz;
+  queue_list[queue_idx].con_dirty=con_dirty;
+}
+
+void queue_status(struct queue *queue) {
+  syslog(LOG_DEBUG, "queue %d: pending (%d), current (%d/%d)", queue->queue_idx, queue->reqNum, queue->currRender, queue->maxRender);
+}
+
+void queues_init() {
+  queue_init(2, 4, 5, 0);
+  queue_init(1, 6, 8, 0);
+
+  queue_status(&queue_list[0]);
+  queue_status(&queue_list[1]);
+}
 
 int main(int argc, char **argv)
 {
@@ -918,6 +955,8 @@ int main(int argc, char **argv)
     openlog("renderd", log_options, LOG_DAEMON);
 
     syslog(LOG_INFO, "Rendering daemon started");
+
+    queues_init();
 
     pthread_mutex_init(&qLock, NULL);
     pthread_cond_init(&qCond, NULL);
