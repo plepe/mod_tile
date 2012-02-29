@@ -63,29 +63,37 @@ void statsRenderFinish(int z, long time) {
 struct item *fetch_request(void)
 {
     struct item *item = NULL;
+    int queue_idx;
+    int todo=0;
 
     pthread_mutex_lock(&qLock);
 
-    while ((reqNum == 0) && (dirtyNum == 0) && (reqPrioNum == 0) && (reqBulkNum == 0)) {
-        pthread_cond_wait(&qCond, &qLock);
+    while(!todo) {
+	for(queue_idx=0; queue_idx<queue_count; queue_idx++) {
+	    if((queue_list[queue_idx].reqNum>0)&&
+	       (queue_list[queue_idx].currRender<
+	        queue_list[queue_idx].maxRender)) {
+		todo=1;
+	    }
+	}
+
+	if(!todo)
+	    pthread_cond_wait(&qCond, &qLock);
     }
-    if (reqPrioNum) {
-        item = reqPrioHead.next;
-        reqPrioNum--;
-        stats.noReqPrioRender++;
-    } else if (reqNum) {
-        item = reqHead.next;
-        reqNum--;
-        stats.noReqRender++;
-    } else if (dirtyNum) {
-        item = dirtyHead.next;
-        dirtyNum--;
-        stats.noDirtyRender++;
-    } else if (reqBulkNum) {
-        item = reqBulkHead.next;
-        reqBulkNum--;
-        stats.noReqBulkRender++;
+
+    for(queue_idx=0; queue_idx<queue_count; queue_idx++) {
+	if((queue_list[queue_idx].reqNum>0)&&
+	   (queue_list[queue_idx].currRender<
+	    queue_list[queue_idx].maxRender)) {
+	    item=queue_list[queue_idx].head->next;
+	    queue_list[queue_idx].reqNum--;
+	    queue_list[queue_idx].currRender++;
+	    queue_list[queue_idx].stats++;
+
+	    queue_status(&queue_list[queue_idx]);
+	}
     }
+
     if (item) {
         item->next->prev = item->prev;
         item->prev->next = item->next;
@@ -94,7 +102,7 @@ struct item *fetch_request(void)
         item->next = renderHead.next;
         renderHead.next->prev = item;
         renderHead.next = item;
-        item->inQueue = queueRender;
+        item->queue_idx= QUEUE_IDX_RENDERING;
     }
 
 
@@ -891,13 +899,14 @@ void queue_init(int maxRender, int con_minz, int con_maxz, int con_dirty) {
   queue_list[queue_idx].reqNum=0;
   queue_list[queue_idx].currRender=0;
   queue_list[queue_idx].maxRender=maxRender;
+  queue_list[queue_idx].stats=0;
   queue_list[queue_idx].con_minz=con_minz;
   queue_list[queue_idx].con_maxz=con_maxz;
   queue_list[queue_idx].con_dirty=con_dirty;
 }
 
 void queue_status(struct queue *queue) {
-  syslog(LOG_DEBUG, "queue %d: pending (%d), current (%d/%d)", queue->queue_idx, queue->reqNum, queue->currRender, queue->maxRender);
+  syslog(LOG_DEBUG, "queue %d: pending requests (%d), current active (%d/%d), total (%d)", queue->queue_idx, queue->reqNum, queue->currRender, queue->maxRender, queue->stats);
 }
 
 void queues_init() {

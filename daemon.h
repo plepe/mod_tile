@@ -59,6 +59,7 @@ struct queue {
     int reqNum;
     int currRender;
     int maxRender;
+    int stats;
     int con_minz;
     int con_maxz;
     int con_dirty;
