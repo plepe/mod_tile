@@ -49,6 +49,10 @@ typedef struct {
 void statsRenderFinish(int z, long time);
 void request_exit(void);
 
+#define QUEUE_IDX_UNDEF		-1
+#define QUEUE_IDX_DUPLICATE	-2
+#define QUEUE_IDX_RENDERING	-3
+
 struct queue {
     int queue_idx;
     struct item *head;

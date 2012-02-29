@@ -289,13 +289,11 @@ enum protoCmd pending(struct item *test)
 
     item = lookup_item_idx(test);
     if (item != NULL) {
-        if ((item->inQueue == queueRender) || (item->inQueue == queueRequest) || (item->inQueue == queueRequestPrio)) {
+        if (item->queue_idx!=QUEUE_IDX_UNDEF) {
             test->duplicates = item->duplicates;
             item->duplicates = test;
-            test->inQueue = queueDuplicate;
+            test->queue_idx = QUEUE_IDX_DUPLICATE;
             return cmdIgnore;
-        } else if ((item->inQueue == queueDirty) || (item->inQueue == queueRequestBulk)){
-            return cmdNotDone;
         }
     }
 
@@ -399,7 +397,7 @@ enum protoCmd rx_request(const struct protocol *req, int fd)
         return cmdIgnore;
     }
 
-    item->queue_idx=-1;
+    item->queue_idx=QUEUE_IDX_UNDEF;
     for(queue_idx=0; queue_idx<queue_count; queue_idx++) {
       if((queue_list[queue_idx].reqNum < REQ_LIMIT)&&
 	 (queue_check_constraints(&queue_list[queue_idx], item))) {
@@ -414,7 +412,7 @@ enum protoCmd rx_request(const struct protocol *req, int fd)
 	}
     }
 
-    if(item->queue_idx==-1) {
+    if(item->queue_idx==QUEUE_IDX_UNDEF) {
 	syslog(LOG_WARNING, "No suitable queue found or full -> drop");
         // The queue is severely backlogged. Drop request
         stats.noReqDroped++;
