@@ -19,6 +19,7 @@ struct item {
     int mx, my;
     int fd;
     struct item *duplicates;
+    int queue_idx;
     enum queueEnum inQueue;
     time_t old_mtime;
 };

@@ -315,11 +315,28 @@ void item_load(struct item *item, const struct protocol *req) {
 	item->old_mtime=buf.st_mtime;
 }
 
+int queue_check_constraints(struct queue *queue, struct item *item) {
+  //syslog(LOG_DEBUG, "check %d\n", item->req.z);
+
+  // check z
+  if((item->req.z<queue->con_minz)||(item->req.z>queue->con_maxz))
+    return 0;
+
+  if((queue->con_dirty==0)&&(item->req.cmd==cmdDirty))
+    return 0;
+    
+  if((queue->con_dirty==1)&&(item->req.cmd!=cmdDirty))
+    return 0;
+    
+  return 1;
+}
+
 enum protoCmd rx_request(const struct protocol *req, int fd)
 {
     struct protocol *reqnew;
     struct item *list = NULL, *item;
     enum protoCmd pend;
+    int queue_idx;
 
     // Upgrade version 1 to version 2
     if (req->ver == 1) {
@@ -382,25 +399,23 @@ enum protoCmd rx_request(const struct protocol *req, int fd)
         return cmdIgnore;
     }
 
-    // New request, add it to render or dirty queue
-    if ((req->cmd == cmdRender) && (reqNum < REQ_LIMIT)) {
-        list = &reqHead;
-        item->inQueue = queueRequest;
-        reqNum++;
-    } else if ((req->cmd == cmdRenderPrio) && (reqPrioNum < REQ_LIMIT)) {
-        list = &reqPrioHead;
-        item->inQueue = queueRequestPrio;
-        reqPrioNum++;
-    } else if ((req->cmd == cmdRenderBulk) && (reqBulkNum < REQ_LIMIT)) {
-        list = &reqBulkHead;
-        item->inQueue = queueRequestBulk;
-        reqBulkNum++;
-    } else if (dirtyNum < DIRTY_LIMIT) {
-        list = &dirtyHead;
-        item->inQueue = queueDirty;
-        dirtyNum++;
-        item->fd = FD_INVALID; // No response after render
-    } else {
+    item->queue_idx=-1;
+    for(queue_idx=0; queue_idx<queue_count; queue_idx++) {
+      if((queue_list[queue_idx].reqNum < REQ_LIMIT)&&
+	 (queue_check_constraints(&queue_list[queue_idx], item))) {
+	  list = queue_list[queue_idx].head;
+	  item->queue_idx=queue_idx;
+	  queue_list[queue_idx].reqNum++;
+	  syslog(LOG_DEBUG, "Added to queue %d", queue_idx);
+
+	  queue_status(&queue_list[queue_idx]);
+
+	  break;
+	}
+    }
+
+    if(item->queue_idx==-1) {
+	syslog(LOG_WARNING, "No suitable queue found or full -> drop");
         // The queue is severely backlogged. Drop request
         stats.noReqDroped++;
         pthread_mutex_unlock(&qLock);
