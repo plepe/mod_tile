@@ -453,8 +453,6 @@ static enum protoCmd render(Map &m, char *xmlname, projection &prj, int x, int y
             tiles.set(xx, yy, save_to_string(vw, "png256"));
         }
     }
-//    std::cout << "DONE TILE " << xmlname << " " << z << " " << x << "-" << x+size-1 << " " << y << "-" << y+size-1 << "\n";
-    syslog(LOG_DEBUG, "DEBUG: DONE TILE %s %d %d-%d %d-%d", xmlname, z, x, x+size-1, y, y+size-1);
     return cmdDone; // OK
 }
 #else
@@ -559,6 +557,8 @@ void *render_thread(void * arg)
                     if (maps[i].ok) {
                         timeval tim;
                         gettimeofday(&tim, NULL);
+                        syslog(LOG_DEBUG, "DEBUG: START TILE %s %d %d-%d %d-%d", 
+                               req->xmlname, req->z, item->mx, item->mx+size-1, item->my, item->my+size-1);
                         long t1=tim.tv_sec*1000+(tim.tv_usec/1000);
 
                         ret = render(maps[i].map, req->xmlname, maps[i].prj, item->mx, item->my, req->z, size, tiles);
