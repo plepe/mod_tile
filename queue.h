@@ -8,7 +8,8 @@ extern "C" {
 enum queue_status { QUEUE_UNDEF, QUEUE_PEND, QUEUE_REND, QUEUE_DUPL };
 
 struct queue {
-    int queue_idx;
+    char *id;
+    struct queue *next;
     struct item *head;
     int reqNum;
     int currRender;
@@ -18,15 +19,15 @@ struct queue {
     int con_maxz;
     int con_dirty;
 };
-#define QUEUE_COUNT 4
 
 struct item *queue_fetch_request(void);
 int queue_check_constraints(struct queue *queue, struct item *item);
 void queue_clear_requests(int fd);
 enum protoCmd queue_item(struct item *item);
-void queue_init(int maxRender, int con_minz, int con_maxz, int con_dirty);
+struct queue *queue_init(char *id, int maxRender, int con_minz, int con_maxz, int con_dirty);
 void queue_status(struct queue *queue);
 void queues_init();
+struct queue *queue_add(struct queue *queue);
 void queue_push(struct queue *queue, struct item *item);
 void queue_remove(struct queue *queue, struct item *item);
 

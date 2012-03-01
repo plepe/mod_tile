@@ -11,44 +11,50 @@
 //#include "protocol.h"
 #include "daemon.h"
 
-static struct queue queue_list[QUEUE_COUNT];
-static struct queue queue_render;
-int queue_count=0;
+static struct queue *queue_list=NULL;
+static struct queue *queue_render=NULL;
 
 struct item *queue_fetch_request(void)
 {
     struct item *item = NULL;
+    struct queue *queue;
     int queue_idx;
     int todo=0;
 
     while(!todo) {
-	for(queue_idx=0; queue_idx<queue_count; queue_idx++) {
-	    if((queue_list[queue_idx].reqNum>0)&&
-	       (queue_list[queue_idx].currRender<
-	        queue_list[queue_idx].maxRender)) {
+	queue=queue_list;
+	while(queue!=NULL) {
+	    if((queue->reqNum>0)&&
+	       (queue->currRender<
+	        queue->maxRender)) {
 		todo=1;
 	    }
+
+	    queue=queue->next;
 	}
 
 	if(!todo)
 	    wait_for_request();
     }
 
-    for(queue_idx=0; queue_idx<queue_count; queue_idx++) {
-	if((queue_list[queue_idx].reqNum>0)&&
-	   (queue_list[queue_idx].currRender<
-	    queue_list[queue_idx].maxRender)) {
-	    item=queue_list[queue_idx].head->next;
-	    queue_list[queue_idx].reqNum--;
-	    queue_list[queue_idx].currRender++;
-	    queue_list[queue_idx].stats++;
+    queue=queue_list;
+    while(queue!=NULL) {
+	if((queue->reqNum>0)&&
+	   (queue->currRender<
+	    queue->maxRender)) {
+	    item=queue->head->next;
+	    queue->reqNum--;
+	    queue->currRender++;
+	    queue->stats++;
 
-	    queue_status(&queue_list[queue_idx]);
+	    queue_status(queue);
 	}
+
+	queue=queue->next;
     }
 
     if (item) {
-	queue_push(&queue_render, item);
+	queue_push(queue_render, item);
     }
 
     return item;
@@ -64,7 +70,7 @@ void queue_push(struct queue *queue, struct item *item) {
     item->next = queue->head->next;
     queue->head->next->prev = item;
     queue->head->next = item;
-    if(queue!=&queue_render)
+    if(queue!=queue_render)
 	item->queue= queue;
 
     queue->reqNum++;
@@ -123,23 +129,23 @@ void queue_clear_requests(int fd)
 }
 
 enum protoCmd queue_item(struct item *item) {
-    int queue_idx;
     struct queue *queue;
 
     item->queue_status=QUEUE_UNDEF;
-    for(queue_idx=0; queue_idx<queue_count; queue_idx++) {
-      if((queue_list[queue_idx].reqNum < REQ_LIMIT)&&
-	 (queue_check_constraints(&queue_list[queue_idx], item))) {
-	  queue = &queue_list[queue_idx];
-
+    queue=queue_list;
+    while(queue!=NULL) {
+      if((queue->reqNum < REQ_LIMIT)&&
+	 (queue_check_constraints(queue, item))) {
 	  item->queue = queue;
 	  item->queue_status = QUEUE_PEND;
 
-	  syslog(LOG_DEBUG, "Added to queue %d", queue_idx);
+	  syslog(LOG_DEBUG, "Added to queue %s", queue->id);
 	  queue_status(queue);
 
 	  break;
 	}
+
+	queue=queue->next;
     }
 
     if(item->queue_status == QUEUE_UNDEF) {
@@ -169,39 +175,36 @@ enum protoCmd queue_item(struct item *item) {
  *            0 only accept requests for non-existing tiles
  *           -1 don't care about dirty-state
  */
-void queue_initq(struct queue *queue) {
-  queue->head=(struct item *)malloc(sizeof(struct item));
-  queue->head->next=queue->head;
-  queue->head->prev=queue->head;
-  queue->reqNum=0;
-  queue->currRender=0;
-  queue->stats=0;
-}
+struct queue *queue_init(char *id, int maxRender, int con_minz, int con_maxz, int con_dirty) {
+    struct queue *queue;
 
-void queue_init(int maxRender, int con_minz, int con_maxz, int con_dirty) {
-  int queue_idx;
-  // get pos of queue and increase queue count
-  queue_idx=queue_count++;
+    queue=(struct queue*)malloc(sizeof(struct queue));
 
-  queue_list[queue_idx].queue_idx=queue_idx;
-  queue_initq(&queue_list[queue_idx]);
-  queue_list[queue_idx].maxRender=maxRender;
-  queue_list[queue_idx].con_minz=con_minz;
-  queue_list[queue_idx].con_maxz=con_maxz;
-  queue_list[queue_idx].con_dirty=con_dirty;
+    queue->head=(struct item *)malloc(sizeof(struct item));
+    queue->head->next=queue->head;
+    queue->head->prev=queue->head;
+
+    queue->maxRender=maxRender;
+    queue->con_minz=con_minz;
+    queue->con_maxz=con_maxz;
+    queue->con_dirty=con_dirty;
+
+    queue->id=id;
+    queue->reqNum=0;
+    queue->currRender=0;
+    queue->stats=0;
+
+    return queue;
 }
 
 void queue_status(struct queue *queue) {
-  syslog(LOG_DEBUG, "queue %d: pending requests (%d), current active (%d/%d), total (%d)", queue->queue_idx, queue->reqNum, queue->currRender, queue->maxRender, queue->stats);
+  syslog(LOG_DEBUG, "queue %s: pending requests (%d), current active (%d/%d), total (%d)", queue->id, queue->reqNum, queue->currRender, queue->maxRender, queue->stats);
 }
 
 void queues_init() {
-  queue_init(2, 4, 5, 0);
-  queue_init(1, 6, 8, 0);
-  queue_initq(&queue_render);
-
-  queue_status(&queue_list[0]);
-  queue_status(&queue_list[1]);
+  queue_add(queue_init("foo", 2, 4, 5, 0));
+  queue_add(queue_init("bar", 1, 6, 8, 0));
+  queue_render=queue_init("render", 0, 0, 0, 0);
 }
 
 void queue_remove(struct queue *queue, struct item *item) {
@@ -209,4 +212,24 @@ void queue_remove(struct queue *queue, struct item *item) {
     item->prev->next = item->next;
     queue->currRender--;
     queue_status(queue);
+}
+
+struct queue *queue_add(struct queue *queue) {
+    struct queue *curr;
+
+    if(queue_list==NULL) {
+	queue_list=queue;
+    }
+    else {
+	curr=queue_list;
+	while(curr->next!=NULL) {
+	    curr=curr->next;
+	}
+
+	curr->next=queue;
+    }
+
+    queue->next=NULL;
+
+    return queue;
 }
