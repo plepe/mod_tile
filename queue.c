@@ -203,3 +203,10 @@ void queues_init() {
   queue_status(&queue_list[0]);
   queue_status(&queue_list[1]);
 }
+
+void queue_remove(struct queue *queue, struct item *item) {
+    item->next->prev = item->prev;
+    item->prev->next = item->next;
+    queue->currRender--;
+    queue_status(queue);
+}

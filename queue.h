@@ -28,6 +28,7 @@ void queue_init(int maxRender, int con_minz, int con_maxz, int con_dirty);
 void queue_status(struct queue *queue);
 void queues_init();
 void queue_push(struct queue *queue, struct item *item);
+void queue_remove(struct queue *queue, struct item *item);
 
 #ifdef __cplusplus
 }

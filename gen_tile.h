@@ -11,8 +11,6 @@ extern "C" {
 #define HTCP_EXPIRE_CACHE 1
 #define HTCP_EXPIRE_CACHE_PORT "4827"
 
-enum queueEnum {queueRequest, queueRequestPrio, queueRequestBulk, queueDirty, queueRender,  queueDuplicate};
-
 struct item {
     struct item *next;
     struct item *prev;
@@ -21,7 +19,6 @@ struct item {
     int fd;
     struct item *duplicates;
     struct queue *queue;
-    enum queueEnum inQueue;
     time_t old_mtime;
     enum queue_status queue_status;
 };

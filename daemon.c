@@ -199,8 +199,7 @@ void send_response(struct item *item, enum protoCmd rsp)
     int ret;
 
     pthread_mutex_lock(&qLock);
-    item->next->prev = item->prev;
-    item->prev->next = item->next;
+    queue_remove(item->queue, item);
     remove_item_idx(item);
     pthread_mutex_unlock(&qLock);
 
@@ -682,7 +681,7 @@ void *slave_thread(void * arg) {
 
             /*Dispatch request to slave renderd*/
             retry = 2;
-            syslog(LOG_INFO,
+            syslog(LOG_DEBUG,
                     "Dispatching request to slave thread on fd %i", pfd);
             do {
                 ret_size = send(pfd, req_slave, sizeof(struct protocol), 0);
