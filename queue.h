@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+#include "iniparser3.0b/src/iniparser.h"
+
 enum queue_status { QUEUE_UNDEF, QUEUE_PEND, QUEUE_REND, QUEUE_DUPL };
 
 struct queue {
@@ -30,6 +32,7 @@ void queues_init();
 struct queue *queue_add(struct queue *queue);
 void queue_push(struct queue *queue, struct item *item);
 void queue_remove(struct queue *queue, struct item *item);
+void queue_ini_add(dictionary *ini, char *section);
 
 #ifdef __cplusplus
 }

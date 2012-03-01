@@ -202,9 +202,29 @@ void queue_status(struct queue *queue) {
 }
 
 void queues_init() {
-  queue_add(queue_init("foo", 2, 4, 5, 0));
-  queue_add(queue_init("bar", 1, 6, 8, 0));
   queue_render=queue_init("render", 0, 0, 0, 0);
+}
+
+void queue_ini_add(dictionary *ini, char *section) {
+    char buffer[PATH_MAX];
+    char *id;
+    int maxRender, con_minz, con_maxz, con_dirty;
+
+    id=&section[6];
+
+    sprintf(buffer, "%s:maxRender", section);
+    maxRender=iniparser_getint(ini, buffer, NUM_THREADS);
+
+    sprintf(buffer, "%s:con_minz", section);
+    con_minz=iniparser_getint(ini, buffer, 0);
+
+    sprintf(buffer, "%s:con_maxz", section);
+    con_maxz=iniparser_getint(ini, buffer, MAX_ZOOM);
+
+    sprintf(buffer, "%s:con_dirty", section);
+    con_dirty=iniparser_getint(ini, buffer, -1);
+
+    queue_add(queue_init(id, maxRender, con_minz, con_maxz, con_dirty));
 }
 
 void queue_remove(struct queue *queue, struct item *item) {

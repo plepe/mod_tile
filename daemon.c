@@ -866,7 +866,12 @@ int main(int argc, char **argv)
     for (int section=0; section < iniparser_getnsec(ini); section++) {
         char *name = iniparser_getsecname(ini, section);
         syslog(LOG_INFO, "Parsing section %s\n", name);
-        if (strncmp(name, "renderd", 7) && strcmp(name, "mapnik")) {
+        if (strncmp(name, "queue ", 6) == 0) {
+	    syslog(LOG_DEBUG, "test %s", name);
+
+	    queue_ini_add(ini, name);
+	}
+	else if (strncmp(name, "renderd", 7) && strcmp(name, "mapnik")) {
             if (config.tile_dir == NULL) {
                 fprintf(stderr, "No valid (active) renderd config section available\n");
                 exit(7);
