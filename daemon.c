@@ -22,6 +22,7 @@
 #include "gen_tile.h"
 #include "protocol.h"
 #include "dir_utils.h"
+#include "queue.h"
 
 #define PIDFILE "/var/run/renderd/renderd.pid"
 
@@ -40,9 +41,6 @@ static pthread_mutex_t qLock;
 static pthread_cond_t qCond;
 static int exit_pipe_fd;
 
-static struct queue queue_list[QUEUE_COUNT];
-int queue_count=0;
-
 static stats_struct stats;
 static pthread_t stats_thread;
 
@@ -60,91 +58,25 @@ void statsRenderFinish(int z, long time) {
     pthread_mutex_unlock(&qLock);
 }
 
-struct item *fetch_request(void)
-{
+struct item *fetch_request(void) {
     struct item *item = NULL;
-    int queue_idx;
-    int todo=0;
 
     pthread_mutex_lock(&qLock);
 
-    while(!todo) {
-	for(queue_idx=0; queue_idx<queue_count; queue_idx++) {
-	    if((queue_list[queue_idx].reqNum>0)&&
-	       (queue_list[queue_idx].currRender<
-	        queue_list[queue_idx].maxRender)) {
-		todo=1;
-	    }
-	}
-
-	if(!todo)
-	    pthread_cond_wait(&qCond, &qLock);
-    }
-
-    for(queue_idx=0; queue_idx<queue_count; queue_idx++) {
-	if((queue_list[queue_idx].reqNum>0)&&
-	   (queue_list[queue_idx].currRender<
-	    queue_list[queue_idx].maxRender)) {
-	    item=queue_list[queue_idx].head->next;
-	    queue_list[queue_idx].reqNum--;
-	    queue_list[queue_idx].currRender++;
-	    queue_list[queue_idx].stats++;
-
-	    queue_status(&queue_list[queue_idx]);
-	}
-    }
-
-    if (item) {
-        item->next->prev = item->prev;
-        item->prev->next = item->next;
-
-        item->prev = &renderHead;
-        item->next = renderHead.next;
-        renderHead.next->prev = item;
-        renderHead.next = item;
-        item->queue_idx= QUEUE_IDX_RENDERING;
-    }
-
+    item = queue_fetch_request();
 
     pthread_mutex_unlock(&qLock);
 
     return item;
 }
-
-void clear_requests(int fd)
-{
-    struct item *item, *dupes, *queueHead;
-
-    /**Only need to look up on the shorter request and render queue
-      * so using the linear list shouldn't be a problem
-      */
-    pthread_mutex_lock(&qLock);
-    for (int i = 0; i < 4; i++) {
-        switch (i) {
-        case 0: { queueHead = &reqHead; break;}
-        case 1: { queueHead = &renderHead; break;}
-        case 2: { queueHead = &reqPrioHead; break;}
-        case 3: { queueHead = &reqBulkHead; break;}
-        }
-
-        item = queueHead->next;
-        while (item != queueHead) {
-            if (item->fd == fd)
-                item->fd = FD_INVALID;
-
-            dupes = item->duplicates;
-            while (dupes) {
-                if (dupes->fd == fd)
-                    dupes->fd = FD_INVALID;
-                dupes = dupes->duplicates;
-            }
-            item = item->next;
-        }
-    }
-
-    pthread_mutex_unlock(&qLock);
+	
+void clear_requests(int fd) {
+    queue_clear_requests(fd);
 }
 
+void wait_for_request(void) {
+    pthread_cond_wait(&qCond, &qLock);
+}
 
 static int calcHashKey(struct item *item) {
     uint64_t xmlnameHash = 0;
@@ -287,7 +219,6 @@ void send_response(struct item *item, enum protoCmd rsp)
     }
 }
 
-
 enum protoCmd pending(struct item *test)
 {
     // check all queues and render list to see if this request already queued
@@ -297,10 +228,10 @@ enum protoCmd pending(struct item *test)
 
     item = lookup_item_idx(test);
     if (item != NULL) {
-        if (item->queue_idx!=QUEUE_IDX_UNDEF) {
+        if (item->queue_status!=QUEUE_UNDEF) {
             test->duplicates = item->duplicates;
             item->duplicates = test;
-            test->queue_idx = QUEUE_IDX_DUPLICATE;
+            test->queue_status = QUEUE_DUPL;
             return cmdIgnore;
         }
     }
@@ -321,28 +252,12 @@ void item_load(struct item *item, const struct protocol *req) {
 	item->old_mtime=buf.st_mtime;
 }
 
-int queue_check_constraints(struct queue *queue, struct item *item) {
-  //syslog(LOG_DEBUG, "check %d\n", item->req.z);
-
-  // check z
-  if((item->req.z<queue->con_minz)||(item->req.z>queue->con_maxz))
-    return 0;
-
-  if((queue->con_dirty==0)&&(item->req.cmd==cmdDirty))
-    return 0;
-    
-  if((queue->con_dirty==1)&&(item->req.cmd!=cmdDirty))
-    return 0;
-    
-  return 1;
-}
-
 enum protoCmd rx_request(const struct protocol *req, int fd)
 {
     struct protocol *reqnew;
     struct item *list = NULL, *item;
     enum protoCmd pend;
-    int queue_idx;
+    int result;
 
     // Upgrade version 1 to version 2
     if (req->ver == 1) {
@@ -374,6 +289,9 @@ enum protoCmd rx_request(const struct protocol *req, int fd)
     item->req = *req;
     item->duplicates = NULL;
     item->fd = (req->cmd == cmdDirty) ? FD_INVALID : fd;
+    item->queue_status=QUEUE_UNDEF;
+    item->next = NULL;
+    item->queue = NULL;
 
     item_load(item, req);
 
@@ -405,40 +323,9 @@ enum protoCmd rx_request(const struct protocol *req, int fd)
         return cmdIgnore;
     }
 
-    item->queue_idx=QUEUE_IDX_UNDEF;
-    for(queue_idx=0; queue_idx<queue_count; queue_idx++) {
-      if((queue_list[queue_idx].reqNum < REQ_LIMIT)&&
-	 (queue_check_constraints(&queue_list[queue_idx], item))) {
-	  list = queue_list[queue_idx].head;
-	  item->queue_idx=queue_idx;
-	  queue_list[queue_idx].reqNum++;
-	  syslog(LOG_DEBUG, "Added to queue %d", queue_idx);
+    result = queue_item(item);
 
-	  queue_status(&queue_list[queue_idx]);
-
-	  break;
-	}
-    }
-
-    if(item->queue_idx==QUEUE_IDX_UNDEF) {
-	syslog(LOG_WARNING, "No suitable queue found or full -> drop");
-        // The queue is severely backlogged. Drop request
-        stats.noReqDroped++;
-        pthread_mutex_unlock(&qLock);
-        free(item);
-        return cmdNotDone;
-    }
-
-    if (list) {
-        item->next = list;
-        item->prev = list->prev;
-        item->prev->next = item;
-        list->prev = item;
-        /* In addition to the linked list, add item to a hash table index
-         * for faster lookup of pending requests.
-         */
-        insert_item_idx(item);
-
+    if(result!=cmdNotDone) {
         pthread_cond_signal(&qCond);
     } else
         free(item);
@@ -879,42 +766,6 @@ void *slave_thread(void * arg) {
         }
     }
     return NULL;
-}
-
-/* maxRender: max count of concurrent items to render
- * con_minz..con_maxz: what zoom levels do we feel responsible for
- * con_dirty: 1 only accept requests for dirty tiles
- *            0 only accept requests for non-existing tiles
- *           -1 don't care about dirty-state
- */
-void queue_init(int maxRender, int con_minz, int con_maxz, int con_dirty) {
-  int queue_idx;
-  // get pos of queue and increase queue count
-  queue_idx=queue_count++;
-
-  queue_list[queue_idx].queue_idx=queue_idx;
-  queue_list[queue_idx].head=(struct item *)malloc(sizeof(struct item));
-  queue_list[queue_idx].head->next=queue_list[queue_idx].head;
-  queue_list[queue_idx].head->prev=queue_list[queue_idx].head;
-  queue_list[queue_idx].reqNum=0;
-  queue_list[queue_idx].currRender=0;
-  queue_list[queue_idx].maxRender=maxRender;
-  queue_list[queue_idx].stats=0;
-  queue_list[queue_idx].con_minz=con_minz;
-  queue_list[queue_idx].con_maxz=con_maxz;
-  queue_list[queue_idx].con_dirty=con_dirty;
-}
-
-void queue_status(struct queue *queue) {
-  syslog(LOG_DEBUG, "queue %d: pending requests (%d), current active (%d/%d), total (%d)", queue->queue_idx, queue->reqNum, queue->currRender, queue->maxRender, queue->stats);
-}
-
-void queues_init() {
-  queue_init(2, 4, 5, 0);
-  queue_init(1, 6, 8, 0);
-
-  queue_status(&queue_list[0]);
-  queue_status(&queue_list[1]);
 }
 
 int main(int argc, char **argv)

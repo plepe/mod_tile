@@ -2,6 +2,7 @@
 #define GEN_TILE_H
 
 #include "protocol.h"
+#include "queue.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -19,9 +20,10 @@ struct item {
     int mx, my;
     int fd;
     struct item *duplicates;
-    int queue_idx;
+    struct queue *queue;
     enum queueEnum inQueue;
     time_t old_mtime;
+    enum queue_status queue_status;
 };
 
 struct item_idx {

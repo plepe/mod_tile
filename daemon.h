@@ -8,6 +8,7 @@ extern "C" {
 #include <limits.h> /* for PATH_MAX */
 
 #include "protocol.h"
+#include "gen_tile.h"
 
 #define INILINE_MAX 256
 #define MAX_SLAVES 5
@@ -48,23 +49,8 @@ typedef struct {
 
 void statsRenderFinish(int z, long time);
 void request_exit(void);
-
-#define QUEUE_IDX_UNDEF		-1
-#define QUEUE_IDX_DUPLICATE	-2
-#define QUEUE_IDX_RENDERING	-3
-
-struct queue {
-    int queue_idx;
-    struct item *head;
-    int reqNum;
-    int currRender;
-    int maxRender;
-    int stats;
-    int con_minz;
-    int con_maxz;
-    int con_dirty;
-};
-#define QUEUE_COUNT 4
+void wait_for_request(void);
+void insert_item_idx(struct item *item);
 
 #ifdef __cplusplus
 }
