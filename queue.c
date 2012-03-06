@@ -276,6 +276,8 @@ void queue_remove(struct queue *queue, struct item *item) {
 struct queue *queue_add(struct queue *queue) {
     struct queue *curr;
 
+    syslog(LOG_DEBUG, "queue_add: queue '%s'", queue->id);
+
     if(queue_list==NULL) {
 	queue_list=queue;
     }

@@ -828,8 +828,6 @@ int main(int argc, char **argv)
 
     syslog(LOG_INFO, "Rendering daemon started");
 
-    queues_init();
-
     pthread_mutex_init(&qLock, NULL);
     pthread_cond_init(&qCond, NULL);
     reqHead.next = reqHead.prev = &reqHead;
@@ -966,6 +964,9 @@ int main(int argc, char **argv)
             }
         }
     }
+
+    // Initialize queues
+    queues_init();
 
     if (config.ipport > 0) {
         syslog(LOG_INFO, "config renderd: ip socket=%s:%i\n", config.iphostname, config.ipport);
