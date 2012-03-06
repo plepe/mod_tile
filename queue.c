@@ -77,16 +77,22 @@ void queue_push(struct queue *queue, struct item *item) {
 }
 
 int queue_check_constraints(struct queue *queue, struct item *item) {
-  //syslog(LOG_DEBUG, "check %d\n", item->req.z);
+  struct constraint *constraint;
 
+  constraint=queue->constraint;
+
+  if(constraint==NULL)
+      return 1;
+
+  //syslog(LOG_DEBUG, "check %d %d %d\n", item->req.z, constraint->minz, constraint->maxz);
   // check z
-  if((item->req.z<queue->con_minz)||(item->req.z>queue->con_maxz))
+  if((item->req.z<constraint->minz)||(item->req.z>constraint->maxz))
     return 0;
 
-  if((queue->con_dirty==0)&&(item->req.cmd==cmdDirty))
+  if((constraint->dirty==0)&&(item->req.cmd==cmdDirty))
     return 0;
     
-  if((queue->con_dirty==1)&&(item->req.cmd!=cmdDirty))
+  if((constraint->dirty==1)&&(item->req.cmd!=cmdDirty))
     return 0;
     
   return 1;
@@ -175,7 +181,7 @@ enum protoCmd queue_item(struct item *item) {
  *            0 only accept requests for non-existing tiles
  *           -1 don't care about dirty-state
  */
-struct queue *queue_init(char *id, int maxRender, int con_minz, int con_maxz, int con_dirty) {
+struct queue *queue_init(char *id, int maxRender, struct constraint *constraint) {
     struct queue *queue;
 
     queue=(struct queue*)malloc(sizeof(struct queue));
@@ -185,9 +191,7 @@ struct queue *queue_init(char *id, int maxRender, int con_minz, int con_maxz, in
     queue->head->prev=queue->head;
 
     queue->maxRender=maxRender;
-    queue->con_minz=con_minz;
-    queue->con_maxz=con_maxz;
-    queue->con_dirty=con_dirty;
+    queue->constraint=constraint;
 
     queue->id=id;
     queue->reqNum=0;
@@ -202,29 +206,32 @@ void queue_status(struct queue *queue) {
 }
 
 void queues_init() {
-  queue_render=queue_init("render", 0, 0, 0, 0);
+  queue_render=queue_init("render", 0, NULL);
 }
 
 void queue_ini_add(dictionary *ini, char *section) {
     char buffer[PATH_MAX];
     char *id;
-    int maxRender, con_minz, con_maxz, con_dirty;
+    int maxRender;
+    struct constraint *constraint;
 
     id=&section[6];
+
+    constraint=(struct constraint *)malloc(sizeof(struct constraint));
 
     sprintf(buffer, "%s:maxRender", section);
     maxRender=iniparser_getint(ini, buffer, NUM_THREADS);
 
-    sprintf(buffer, "%s:con_minz", section);
-    con_minz=iniparser_getint(ini, buffer, 0);
+    sprintf(buffer, "%s:minz", section);
+    constraint->minz=iniparser_getint(ini, buffer, 0);
 
-    sprintf(buffer, "%s:con_maxz", section);
-    con_maxz=iniparser_getint(ini, buffer, MAX_ZOOM);
+    sprintf(buffer, "%s:maxz", section);
+    constraint->maxz=iniparser_getint(ini, buffer, MAX_ZOOM);
 
-    sprintf(buffer, "%s:con_dirty", section);
-    con_dirty=iniparser_getint(ini, buffer, -1);
+    sprintf(buffer, "%s:dirty", section);
+    constraint->dirty=iniparser_getint(ini, buffer, -1);
 
-    queue_add(queue_init(id, maxRender, con_minz, con_maxz, con_dirty));
+    queue_add(queue_init(id, maxRender, constraint));
 }
 
 void queue_remove(struct queue *queue, struct item *item) {
