@@ -80,6 +80,10 @@ void syslog_constraint(int debug, struct constraint *constraint) {
     syslog(debug, "  minz..maxz: %d..%d\n",
            constraint->minz, constraint->maxz);
     syslog(debug, "  dirty: %d\n", constraint->dirty);
+    if(constraint->age==0)
+	syslog(debug, "  age: only new tiles\n");
+    else
+	syslog(debug, "  age: %.2f\n", constraint->age);
 }
 
 int queue_check_constraints(struct queue *queue, struct item *item) {
@@ -100,6 +104,17 @@ int queue_check_constraints(struct queue *queue, struct item *item) {
     
   if((constraint->dirty==1)&&(item->req.cmd!=cmdDirty))
     return 0;
+
+  if(constraint->age==0) {
+      if(item->old_mtime!=0)
+	  return 0;
+  }
+  else {
+      time_t time_stamp=time(NULL)-constraint->age*86400;
+
+      if(item->old_mtime>time_stamp)
+	  return 0;
+  }
     
   return 1;
 }
@@ -236,6 +251,9 @@ void queue_ini_add(dictionary *ini, char *section) {
 
     sprintf(buffer, "%s:dirty", section);
     constraint->dirty=iniparser_getint(ini, buffer, -1);
+
+    sprintf(buffer, "%s:age", section);
+    constraint->age=iniparser_getdouble(ini, buffer, 3.0);
 
     syslog(LOG_DEBUG, "Queue '%s':", id);
     syslog_constraint(LOG_DEBUG, constraint);

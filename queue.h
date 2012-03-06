@@ -13,6 +13,7 @@ struct constraint {
     int minz;
     int maxz;
     int dirty;
+    double age;
 };
 
 struct queue {
