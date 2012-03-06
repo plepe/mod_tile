@@ -76,6 +76,12 @@ void queue_push(struct queue *queue, struct item *item) {
     queue->reqNum++;
 }
 
+void syslog_constraint(int debug, struct constraint *constraint) {
+    syslog(debug, "  minz..maxz: %d..%d\n",
+           constraint->minz, constraint->maxz);
+    syslog(debug, "  dirty: %d\n", constraint->dirty);
+}
+
 int queue_check_constraints(struct queue *queue, struct item *item) {
   struct constraint *constraint;
 
@@ -230,6 +236,9 @@ void queue_ini_add(dictionary *ini, char *section) {
 
     sprintf(buffer, "%s:dirty", section);
     constraint->dirty=iniparser_getint(ini, buffer, -1);
+
+    syslog(LOG_DEBUG, "Queue '%s':", id);
+    syslog_constraint(LOG_DEBUG, constraint);
 
     queue_add(queue_init(id, maxRender, constraint));
 }
