@@ -228,6 +228,11 @@ void queue_status(struct queue *queue) {
 
 void queues_init() {
   queue_render=queue_init("render", 0, NULL);
+
+  // no queues defined? use default
+  if(queue_list==NULL) {
+    queue_add(queue_init("default", NUM_THREADS, NULL));
+  }
 }
 
 void queue_ini_add(dictionary *ini, char *section) {
