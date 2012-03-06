@@ -1,0 +1,34 @@
+In the renderd.conf the rendering-queues can be defined. The order of
+these queues defines the priority (first come first server). A queue
+entry always starts with "queue":
+
+Example:
+[queue high_priority]
+maxRender=3
+minz=16
+age=3
+
+[queue low_priority]
+maxRender=1
+age=14
+
+This defines two rendering queues. The first takes requests for
+metatiles from zoom-level 16 on, where the old tiles are at least 3 days
+old. The second takes requests for metatiles for each zoomlevel but only
+when tiles are at least 14 days old. No matter how many render-threads
+are defined, the first queue never uses more than 3 at a time, the
+second even no more than 1 at a time. So the renderd doesn't get stuck
+with long-lastings requests for low zoom levels.
+
+The following variables can be set for the queues:
+maxRender=n	Never use more than n render threads at a time (default:
+		NUM_THREADS from render_config.h)
+minz=n		The queue takes requests for tiles z>=n (default: 0)
+maxz=n          The queue takes requests for tiles z<=n (default:
+		MAX_ZOOM from render_config.h)
+age=f		Only render metatiles aged >=f days (default: 3.0)
+                If age=0 only new tiles can be added to this queue
+dirty=n		Depends on the type of the request. Possible vales:
+                -1 ... don't care (default)
+		1 .... render only tiles which are 'dirty'
+		0 .... render only new tiles
