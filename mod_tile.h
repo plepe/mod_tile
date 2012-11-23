@@ -15,6 +15,8 @@
 
 #define INILINE_MAX 256
 
+#define MAX_ZOOM_SERVER 30
+
 #define FRESH 1
 #define OLD 2
 #define FRESH_RENDER 3
@@ -25,8 +27,10 @@
 /* Maximum number of times we camp out before giving up */
 #define MAXCAMP 10
 
+#define DEFAULT_ATTRIBUTION "&copy;<a href=\"http://www.openstreetmap.org/\">OpenStreetMap</a> and <a href=\"http://wiki.openstreetmap.org/wiki/Contributors\">contributors</a>, <a href=\"http://creativecommons.org/licenses/by-sa/2.0/\">CC-BY-SA</a>"
+
 typedef struct delaypool_entry {
-	in_addr_t ip_addr;
+	struct in6_addr ip_addr;
 	int available_tiles;
 	int available_render_req;
 } delaypool_entry;
@@ -50,9 +54,9 @@ typedef struct stats_data {
     apr_uint64_t noFreshRender;
     apr_uint64_t noOldCache;
     apr_uint64_t noOldRender;
-	apr_uint64_t noRespZoom[MAX_ZOOM + 1];
-	apr_uint64_t noResp200Layer[XMLCONFIGS_MAX];
-	apr_uint64_t noResp404Layer[XMLCONFIGS_MAX];
+	apr_uint64_t noRespZoom[MAX_ZOOM_SERVER + 1];
+    apr_uint64_t *noResp200Layer;
+    apr_uint64_t *noResp404Layer;
 } stats_data;
 
 typedef struct {
@@ -60,6 +64,11 @@ typedef struct {
     char baseuri[PATH_MAX];
     char fileExtension[PATH_MAX];
     char mimeType[PATH_MAX];
+    const char * description;
+    const char * attribution;
+    const char * cors;
+    char **hostnames;
+    int noHostnames;
     int minzoom;
     int maxzoom;
 } tile_config_rec;
@@ -82,7 +91,7 @@ typedef struct {
     char tile_dir[PATH_MAX];
 	char cache_extended_hostname[PATH_MAX];
     int  cache_extended_duration;
-    int mincachetime[MAX_ZOOM + 1];
+    int mincachetime[MAX_ZOOM_SERVER + 1];
     int enableGlobalStats;
 	int enableTileThrottling;
 	int delaypoolTileSize;
@@ -95,7 +104,7 @@ typedef struct {
 typedef struct tile_request_data {
 	struct protocol * cmd;
 	int layerNumber;
-};
+} tile_request_data;
 
 enum tileState { tileMissing, tileOld, tileCurrent };
 

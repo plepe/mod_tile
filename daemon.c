@@ -14,6 +14,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <string.h>
+#include <strings.h>
 #include <syslog.h>
 #include <getopt.h>
 
@@ -430,7 +431,9 @@ void request_exit(void)
 {
   // Any write to the exit pipe will trigger a graceful exit
   char c=0;
-  write(exit_pipe_fd, &c, sizeof(c));
+  if (write(exit_pipe_fd, &c, sizeof(c)) < 0) {
+      fprintf(stderr, "Failed to write to the exit pipe: %s\n", strerror(errno));
+  }
 }
 
 void process_loop(int listen_fd)
