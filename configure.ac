@@ -15,6 +15,13 @@ AC_PROG_CXX
 AC_PROG_CC
 AC_PROG_CC_C99
 
+dnl Find C++ compiler 
+AC_CHECK_PROG(HAVE_CXX, $CXX, yes, no) 
+if test "$HAVE_CXX" = "no"  
+then 
+  AC_MSG_ERROR([Could not find a c++ compiler]); 
+fi
+
 # Checks for libraries.
 
 # Checks for header files.
@@ -41,6 +48,19 @@ AC_SEARCH_LIBS(pow,m)
 AX_BOOST_BASE
 AC_CHECK_ICU(4.2)
 AX_LIB_MAPNIK
+AX_ENABLE_LIBMEMCACHED
+LIBCURL_CHECK_CONFIG
+AC_CHECK_LIB(rados, rados_version, [
+    AC_DEFINE([HAVE_LIBRADOS], [1], [Have found librados])
+    LIBRADOS_LDFLAGS='-lrados'
+    AC_SUBST(LIBRADOS_LDFLAGS)
+][])
+
+PKG_CHECK_MODULES(CAIRO, cairo >= 1.8.0, have_cairo=true, have_cairo=false)
+if $have_cairo; then
+    AC_DEFINE(HAVE_CAIRO, 1, [Have cairo graphics library])
+fi
+
 AC_CHECK_FUNCS([bzero gethostbyname gettimeofday inet_ntoa memset mkdir pow select socket strchr strdup strerror strrchr strstr strtol strtoul utime],[],[AC_MSG_ERROR([One of the required functions was not found])])
 AC_CHECK_FUNCS([daemon getloadavg],[],[])
 
@@ -48,14 +68,14 @@ AC_ARG_WITH(apxs,
     [  --with-apxs=PATH        path to Apache apxs],
     [
         if test "$withval" = "yes"; then
-            AC_CHECK_PROGS(APXS, apxs2 /usr/sbin/apxs2, reject)
+            AC_CHECK_PROGS(APXS, apxs apxs2 /opt/local/apache2/bin/apxs, reject)
         else
             APXS=$withval
             AC_SUBST(APXS)
         fi
     ],
     [
-        AC_CHECK_PROGS(APXS, apxs2 /usr/sbin/apxs2, reject)
+        AC_CHECK_PROGS(APXS, apxs apxs2 /opt/local/apache2/bin/apxs, reject)
     ])
 if test "$APXS" = "reject"; then
   AC_MSG_ERROR([Could not find apxs on the path.])
